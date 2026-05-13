@@ -15,18 +15,16 @@ jobs:
               run: sudo xcode-select -s /Applications/Xcode_16.2.app
             - name: Build Xcode Archive
               run: |
-            - name: Build Xcode Archive
-              run: |
-              xcodebuild archive \
-              -project LocalDevVPN.xcodeproj \
-             -scheme LocalDevVPN \
-             -destination 'generic/platform=iOS' \
-             -archivePath build/LocalDevVPN.xcarchive \
-              CODE_SIGN_IDENTITY="" \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGNING_ALLOWED=NO \
-              2>&1 | tee build.log; \
-             grep -E "error:|warning:" build.log | head -50
+                  xcodebuild archive \
+                    -project LocalDevVPN.xcodeproj \
+                    -scheme LocalDevVPN \
+                    -destination 'generic/platform=iOS' \
+                    -archivePath build/LocalDevVPN.xcarchive \
+                    CODE_SIGN_IDENTITY="" \
+                    CODE_SIGNING_REQUIRED=NO \
+                    CODE_SIGNING_ALLOWED=NO \
+                    2>&1 | tee build.log; \
+                    grep -E "error:|warning:" build.log | head -50
             - name: Create Payload directory
               run: mkdir -p Payload
             - name: Copy App to Payload
