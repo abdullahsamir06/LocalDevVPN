@@ -21,14 +21,19 @@ jobs:
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_16.2.app
 
+      - name: List Available Destinations (Debug)
+        run: xcodebuild -project LocalDevVPN.xcodeproj -scheme LocalDevVPN -showdestinations
+
       - name: Build App Binary
         run: |
           mkdir -p build
-          # We use || true because actool often exits with 65 even if the binary is fine
+          # We use -sdk iphoneos and a simplified destination
+          # We keep || true because intermediate tool failures (actool) are expected
           xcodebuild build \
             -project LocalDevVPN.xcodeproj \
             -scheme LocalDevVPN \
-            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -37,29 +42,28 @@ jobs:
             ASSETCATALOG_COMPILER_SKIP_APP_SPECIFIC_COMPILATION=YES \
             ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
             ASSETCATALOG_COMPILER_LAUNCHEXT=none \
-            COMPILER_INDEX_STORE_ENABLE=NO \
             VALIDATE_ASSETS=NO \
             ENABLE_PREVIEWS=NO \
             | tee build.log || true
           
-          # Check if the .app was actually created
-          if [ ! -d "$(find build/DerivedData -name "LocalDevVPN.app" -type d | grep -v "Index")" ]; then
-            echo "CRITICAL FAILURE: Build failed to produce .app bundle"
+          # Check if the .app folder was produced regardless of exit code
+          APP_PATH=$(find build/DerivedData -name "LocalDevVPN.app" -type d | grep -v "Index" | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "CRITICAL FAILURE: Build failed to produce .app bundle. Check build.log above."
             exit 1
           fi
 
       - name: Prepare IPA
         run: |
           mkdir -p Payload
-          # Find the app bundle
           APP_PATH=$(find build/DerivedData -name "LocalDevVPN.app" -type d | grep -v "Index" | head -n 1)
           echo "Found App at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           
-          # Strip any broken signatures before ldid
+          # Clean up any partial signatures
           find Payload/LocalDevVPN.app -name "_CodeSignature" -exec rm -rf {} +
           
-          # Sign all executables (App + Extensions) for research environment use
+          # Sign for jailbreak/TrollStore usage
           find Payload/LocalDevVPN.app -type f -perm +111 -exec ldid -S {} +
           
           zip -r LocalDevVPN.ipa Payload
