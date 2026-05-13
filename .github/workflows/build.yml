@@ -21,40 +21,40 @@ jobs:
       - name: Select Xcode Version
         run: sudo xcode-select -s /Applications/Xcode_16.2.app
 
-      - name: Build and Archive
+      - name: Build App Binary
         run: |
           mkdir -p build
-          # We use ACTION=install and a custom deployment location to bypass actool's runtime check
-          xcodebuild archive \
+          # Using 'build' instead of 'archive' to bypass strict asset validation
+          xcodebuild build \
             -project LocalDevVPN.xcodeproj \
             -scheme LocalDevVPN \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -archivePath build/LocalDevVPN.xcarchive \
+            -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
             ASSETCATALOG_COMPILER_SKIP_APP_SPECIFIC_COMPILATION=YES \
-            ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            VALIDATE_ASSETS=NO \
-            | tee build.log
+            VALIDATE_ASSETS=NO
 
       - name: Prepare IPA
         run: |
           mkdir -p Payload
-          # The path inside the archive depends on your project settings, 
-          # but usually it's under Products/Applications
-          APP_PATH=$(find build/LocalDevVPN.xcarchive -name "*.app" -type d | head -n 1)
+          # Locate the .app folder inside DerivedData
+          APP_PATH=$(find build/DerivedData -name "LocalDevVPN.app" -type d | grep -v "Index" | head -n 1)
           if [ -z "$APP_PATH" ]; then
-            echo "Error: Could not find .app in archive"
+            echo "Error: Could not find LocalDevVPN.app"
             exit 1
           fi
+          
+          echo "Found App at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           
-          # Clean signature and apply ldid for research purposes (A14/6s compatibility)
-          # find Payload -name "_CodeSignature" -exec rm -rf {} +
-          ldid -S Payload/*.app/$(basename Payload/*.app .app)
+          # Apply ldid signature to the main binary and any extensions
+          # This allows the app to run on jailbroken/TrollStore devices
+          find Payload/LocalDevVPN.app -name "TunnelProv" -exec ldid -S {} +
+          ldid -S Payload/LocalDevVPN.app/LocalDevVPN
           
           zip -r LocalDevVPN.ipa Payload
 
