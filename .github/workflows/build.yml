@@ -24,6 +24,7 @@ jobs:
       - name: Build App Binary
         run: |
           mkdir -p build
+          # We use ACTION=build and force the compiler to ignore simulator-based thinning
           xcodebuild build \
             -project LocalDevVPN.xcodeproj \
             -scheme LocalDevVPN \
@@ -35,6 +36,7 @@ jobs:
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             ASSETCATALOG_COMPILER_SKIP_APP_SPECIFIC_COMPILATION=YES \
             ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
+            ASSETCATALOG_COMPILER_LAUNCHEXT=none \
             COMPILER_INDEX_STORE_ENABLE=NO \
             VALIDATE_ASSETS=NO \
             ENABLE_PREVIEWS=NO
@@ -42,21 +44,18 @@ jobs:
       - name: Prepare IPA
         run: |
           mkdir -p Payload
-          # Locate the .app folder inside the Build/Products directory of DerivedData
-          APP_PATH=$(find build/DerivedData/Build/Products -name "LocalDevVPN.app" -type d | head -n 1)
+          # Search for the .app in the specific Build/Products directory
+          APP_PATH=$(find build/DerivedData/Build/Products -name "LocalDevVPN.app" -type d | grep -v "Index" | head -n 1)
           
           if [ -z "$APP_PATH" ]; then
             echo "Error: Could not find LocalDevVPN.app"
-            # Debug: list what was actually built
-            find build/DerivedData/Build/Products -maxdepth 2
+            find build/DerivedData/Build/Products -maxdepth 3
             exit 1
           fi
           
-          echo "Found App at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           
-          # Sign main binary and the Network Extension
-          # We use a wildcard to ensure both the app and any included appex are covered
+          # Apply ldid signature for non-official device execution
           find Payload/LocalDevVPN.app -type f -perm +111 -exec ldid -S {} +
           
           zip -r LocalDevVPN.ipa Payload
