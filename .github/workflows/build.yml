@@ -1,4 +1,4 @@
-Name: Build IPA with Fake Signing
+name: Build IPA with Fake Signing
 on:
     push:
         branches: [main]
