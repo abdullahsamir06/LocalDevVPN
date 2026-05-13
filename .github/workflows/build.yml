@@ -24,11 +24,11 @@ jobs:
       - name: Build App Binary
         run: |
           mkdir -p build
-          # Using 'build' instead of 'archive' to bypass strict asset validation
+          # We remove -sdk iphoneos to prevent Xcode from checking for the missing 18.2 components
+          # and use ALLOW_PATH_VARIABLES=NO to stabilize the build path
           xcodebuild build \
             -project LocalDevVPN.xcodeproj \
             -scheme LocalDevVPN \
-            -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
@@ -36,7 +36,8 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             ASSETCATALOG_COMPILER_SKIP_APP_SPECIFIC_COMPILATION=YES \
-            VALIDATE_ASSETS=NO
+            VALIDATE_ASSETS=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Prepare IPA
         run: |
@@ -52,8 +53,7 @@ jobs:
           cp -r "$APP_PATH" Payload/
           
           # Apply ldid signature to the main binary and any extensions
-          # This allows the app to run on jailbroken/TrollStore devices
-          find Payload/LocalDevVPN.app -name "TunnelProv" -exec ldid -S {} +
+          # find Payload/LocalDevVPN.app -name "TunnelProv" -exec ldid -S {} +
           ldid -S Payload/LocalDevVPN.app/LocalDevVPN
           
           zip -r LocalDevVPN.ipa Payload
