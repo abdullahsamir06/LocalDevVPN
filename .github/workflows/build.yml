@@ -1,80 +1,55 @@
-name: Build IPA with Fake Signing
+name: Build LocalDevVPN
+
 on:
-    push:
-        branches: [main]
-    workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
 jobs:
-    build:
-        runs-on: macos-latest
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+  build:
+    runs-on: macos-15
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-            - name: Install ldid
-              run: brew install ldid
+      - name: Install Dependencies
+        run: |
+          brew install ldid
 
-            - name: Select Xcode version
-              run: sudo xcode-select -s /Applications/Xcode_16.2.app
+      - name: Select Xcode Version
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app
 
-            - name: Build Xcode Archive
-              run: |
-                  mkdir -p build
-                  set -o pipefail
-                  # We add SKIP_INSTALL=NO and disable asset validation and symbol generation
-                  # If actool still fails, we use 'COMPILER_INDEX_STORE_ENABLE=NO' to speed up CI
-                  xcodebuild archive \
-                    -project LocalDevVPN.xcodeproj \
-                    -scheme LocalDevVPN \
-                    -destination 'generic/platform=iOS' \
-                    -archivePath build/LocalDevVPN.xcarchive \
-                    CODE_SIGN_IDENTITY="" \
-                    CODE_SIGNING_REQUIRED=NO \
-                    CODE_SIGNING_ALLOWED=NO \
-                    ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
-                    ASSETCATALOG_COMPILER_SKIP_APP_SPECIFIC_COMPILATION=YES \
-                    VALIDATE_ASSETS=NO \
-                    2>&1 | tee build.log
-                  
-                  echo "=== ERRORS ==="
-                  grep "error:" build.log || true
+      - name: Build XCArchive
+        run: |
+          mkdir -p build
+          xcodebuild archive \
+            -project LocalDevVPN.xcodeproj \
+            -scheme LocalDevVPN \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/LocalDevVPN.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
+            ASSETCATALOG_COMPILER_SKIP_APP_SPECIFIC_COMPILATION=YES \
+            VALIDATE_ASSETS=NO \
+            | tee build.log
 
-            - name: Create Payload directory
-              run: mkdir -p Payload
+      - name: Prepare Payload
+        run: |
+          mkdir -p Payload
+          cp -r build/LocalDevVPN.xcarchive/Products/Applications/LocalDevVPN.app Payload/
+          # Ensure ldid is applied if you need to bypass Apple's signature for jailbreak/TrollStore
+          ldid -S Payload/LocalDevVPN.app/LocalDevVPN
+          zip -r LocalDevVPN.ipa Payload
 
-            - name: Copy App to Payload
-              run: |
-                  # Find the .app folder inside the archive
-                  APP_PATH=$(find build/LocalDevVPN.xcarchive -name "*.app" -type d | head -n 1)
-                  if [ -z "$APP_PATH" ]; then
-                    echo "Error: Could not find .app in archive. Build likely failed."
-                    exit 1
-                  fi
-                  echo "Found app at: $APP_PATH"
-                  cp -R "$APP_PATH" Payload/
-
-            - name: Find and Sign App Extension
-              run: |
-                  # Find any .appex files anywhere inside the Payload
-                  find Payload/ -name "*.appex" -type d | while read APPEX_PATH; do
-                    BINARY_NAME=$(basename "$APPEX_PATH" .appex)
-                    echo "Signing App Extension binary: $APPEX_PATH/$BINARY_NAME"
-                    ldid -S"${GITHUB_WORKSPACE}/TunnelProv/TunnelProv.entitlements" "$APPEX_PATH/$BINARY_NAME"
-                  done
-
-            - name: Sign Main App Bundle
-              run: |
-                  # Dynamically find the main app binary
-                  APP_BUNDLE=$(find Payload/ -name "*.app" -type d | head -n 1)
-                  APP_NAME=$(basename "$APP_BUNDLE" .app)
-                  echo "Signing Main App binary: $APP_BUNDLE/$APP_NAME"
-                  ldid -S"${GITHUB_WORKSPACE}/LocalDevVPN/LocalDevVPN.entitlements" "$APP_BUNDLE/$APP_NAME"
-
-            - name: Create IPA
-              run: |
-                  zip -r ./LocalDevVPN-fakesigned.ipa Payload
-
-            - name: Upload IPA Artifact
-              uses: actions/upload-artifact@v4
-              with:
-                  name: LocalDevVPN-fakesigned-IPA
-                  path: LocalDevVPN-fakesigned.ipa
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalDevVPN-IPA
+          path: LocalDevVPN.ipa
