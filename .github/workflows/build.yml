@@ -22,10 +22,10 @@ jobs:
             - name: Build Xcode Archive
               run: |
                   xcodebuild archive \
-                    -project StosVPN.xcodeproj \
-                    -scheme StosVPN \
+                    -project LocalDevVPN.xcodeproj \
+                    -scheme LocalDevVPN \
                     -destination 'generic/platform=iOS' \
-                    -archivePath build/StosVPN.xcarchive \
+                    -archivePath build/LocalDevVPN.xcarchive \
                     CODE_SIGN_IDENTITY="" \
                     CODE_SIGNING_REQUIRED=NO \
                     CODE_SIGNING_ALLOWED=NO
