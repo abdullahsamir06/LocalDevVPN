@@ -24,7 +24,7 @@ jobs:
       - name: Build App Binary
         run: |
           mkdir -p build
-          # We use ACTION=build and force the compiler to ignore simulator-based thinning
+          # We use || true because actool often exits with 65 even if the binary is fine
           xcodebuild build \
             -project LocalDevVPN.xcodeproj \
             -scheme LocalDevVPN \
@@ -39,23 +39,27 @@ jobs:
             ASSETCATALOG_COMPILER_LAUNCHEXT=none \
             COMPILER_INDEX_STORE_ENABLE=NO \
             VALIDATE_ASSETS=NO \
-            ENABLE_PREVIEWS=NO
+            ENABLE_PREVIEWS=NO \
+            | tee build.log || true
+          
+          # Check if the .app was actually created
+          if [ ! -d "$(find build/DerivedData -name "LocalDevVPN.app" -type d | grep -v "Index")" ]; then
+            echo "CRITICAL FAILURE: Build failed to produce .app bundle"
+            exit 1
+          fi
 
       - name: Prepare IPA
         run: |
           mkdir -p Payload
-          # Search for the .app in the specific Build/Products directory
-          APP_PATH=$(find build/DerivedData/Build/Products -name "LocalDevVPN.app" -type d | grep -v "Index" | head -n 1)
-          
-          if [ -z "$APP_PATH" ]; then
-            echo "Error: Could not find LocalDevVPN.app"
-            find build/DerivedData/Build/Products -maxdepth 3
-            exit 1
-          fi
-          
+          # Find the app bundle
+          APP_PATH=$(find build/DerivedData -name "LocalDevVPN.app" -type d | grep -v "Index" | head -n 1)
+          echo "Found App at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           
-          # Apply ldid signature for non-official device execution
+          # Strip any broken signatures before ldid
+          find Payload/LocalDevVPN.app -name "_CodeSignature" -exec rm -rf {} +
+          
+          # Sign all executables (App + Extensions) for research environment use
           find Payload/LocalDevVPN.app -type f -perm +111 -exec ldid -S {} +
           
           zip -r LocalDevVPN.ipa Payload
