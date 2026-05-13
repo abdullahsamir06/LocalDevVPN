@@ -1,21 +1,27 @@
-name: Build IPA with Fake Signing
+Name: Build IPA with Fake Signing
 on:
     push:
-        branches: [main] # Or your default branch
-    workflow_dispatch: # Allows manual triggering
+        branches: [main]
+    workflow_dispatch:
 jobs:
     build:
-        runs-on: macos-latest # Use the latest macOS runner
+        runs-on: macos-latest
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
+
             - name: Install ldid
               run: brew install ldid
+
             - name: Select Xcode version
               run: sudo xcode-select -s /Applications/Xcode_16.2.app
+
             - name: Build Xcode Archive
               run: |
+                  # Explicitly create build dir for logs
+                  mkdir -p build
                   set -o pipefail
+                  
                   xcodebuild archive \
                     -project LocalDevVPN.xcodeproj \
                     -scheme LocalDevVPN \
@@ -24,43 +30,57 @@ jobs:
                     CODE_SIGN_IDENTITY="" \
                     CODE_SIGNING_REQUIRED=NO \
                     CODE_SIGNING_ALLOWED=NO \
+                    ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
+                    VALIDATE_ASSETS=NO \
                     2>&1 | tee build.log
+                  
                   echo "=== ERRORS ==="
                   grep "error:" build.log || true
+
             - name: List build output
               if: always()
               run: |
                   echo "=== build/ contents ==="
-                  ls -la build/ || echo "build/ does not exist"
+                  ls -R build/ || echo "build/ does not exist"
+
             - name: Create Payload directory
               run: mkdir -p Payload
+
             - name: Copy App to Payload
               run: |
                   APP_PATH=$(find build/LocalDevVPN.xcarchive -name "*.app" -type d | head -n 1)
-                  echo "Found app at: $APP_PATH"
-                  cp -R "$APP_PATH" Payload/LocalDevVPN.app
-            - name: Find and Sign App Extension
-              run: |
-                  APPEX_PATH=$(find Payload/LocalDevVPN.app/PlugIns -name "*.appex" | head -n 1)
-                  if [ -z "$APPEX_PATH" ]; then
-                    echo "Error: App Extension (.appex) not found in PlugIns directory."
+                  if [ -z "$APP_PATH" ]; then
+                    echo "Error: Could not find .app in archive. Build likely failed."
                     exit 1
                   fi
-                  echo "Found App Extension at: $APPEX_PATH"
-                  # Use the specific entitlements for the extension
-                  ldid -S"${GITHUB_WORKSPACE}/TunnelProv/TunnelProv.entitlements" "$APPEX_PATH/$(basename "$APPEX_PATH" .appex)"
-                  echo "Signed App Extension."
+                  echo "Found app at: $APP_PATH"
+                  cp -R "$APP_PATH" Payload/
+
+            - name: Find and Sign App Extension
+              run: |
+                  # Find all appex files and sign them
+                  find Payload/ -name "*.appex" | while read APPEX_PATH; do
+                    echo "Found App Extension at: $APPEX_PATH"
+                    # Using ldid with the entitlements file from your workspace
+                    ldid -S"${GITHUB_WORKSPACE}/TunnelProv/TunnelProv.entitlements" "$APPEX_PATH/$(basename "$APPEX_PATH" .appex)"
+                    echo "Signed $APPEX_PATH"
+                  done
+
             - name: Sign Main App Bundle
               run: |
-                  APP_BINARY_PATH="Payload/LocalDevVPN.app/LocalDevVPN"
-                  # Use the specific entitlements for the main app
+                  # Find the main executable in the copied app bundle
+                  APP_NAME=$(ls Payload/ | grep ".app")
+                  APP_BINARY_PATH="Payload/$APP_NAME/${APP_NAME%.app}"
+                  echo "Signing binary at: $APP_BINARY_PATH"
                   ldid -S"${GITHUB_WORKSPACE}/LocalDevVPN/LocalDevVPN.entitlements" "$APP_BINARY_PATH"
                   echo "Signed Main App Bundle."
+
             - name: Create IPA
               run: |
                   zip -r ./LocalDevVPN-fakesigned.ipa Payload
+
             - name: Upload IPA Artifact
               uses: actions/upload-artifact@v4
               with:
-                  name: LocalDevVPN-IPA.ipa
+                  name: LocalDevVPN-fakesigned-IPA
                   path: LocalDevVPN-fakesigned.ipa
