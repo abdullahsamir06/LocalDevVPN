@@ -28,7 +28,10 @@ jobs:
             - name: Create Payload directory
               run: mkdir -p Payload
             - name: Copy App to Payload
-              run: cp -R build/LocalDevVPN.xcarchive/Products/Applications/LocalDevVPN.app Payload/LocalDevVPN.app
+              run: |
+                  APP_PATH=$(find build/LocalDevVPN.xcarchive -name "*.app" -type d | head -n 1)
+                  echo "Found app at: $APP_PATH"
+                  cp -R "$APP_PATH" Payload/LocalDevVPN.app
             - name: Find and Sign App Extension
               run: |
                   APPEX_PATH=$(find Payload/LocalDevVPN.app/PlugIns -name "*.appex" | head -n 1)
