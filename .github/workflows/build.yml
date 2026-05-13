@@ -24,8 +24,6 @@ jobs:
       - name: Build App Binary
         run: |
           mkdir -p build
-          # We remove -sdk iphoneos to prevent Xcode from checking for the missing 18.2 components
-          # and use ALLOW_PATH_VARIABLES=NO to stabilize the build path
           xcodebuild build \
             -project LocalDevVPN.xcodeproj \
             -scheme LocalDevVPN \
@@ -36,25 +34,30 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             AD_HOC_CODE_SIGNING_ALLOWED=YES \
             ASSETCATALOG_COMPILER_SKIP_APP_SPECIFIC_COMPILATION=YES \
+            ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             VALIDATE_ASSETS=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            ENABLE_PREVIEWS=NO
 
       - name: Prepare IPA
         run: |
           mkdir -p Payload
-          # Locate the .app folder inside DerivedData
-          APP_PATH=$(find build/DerivedData -name "LocalDevVPN.app" -type d | grep -v "Index" | head -n 1)
+          # Locate the .app folder inside the Build/Products directory of DerivedData
+          APP_PATH=$(find build/DerivedData/Build/Products -name "LocalDevVPN.app" -type d | head -n 1)
+          
           if [ -z "$APP_PATH" ]; then
             echo "Error: Could not find LocalDevVPN.app"
+            # Debug: list what was actually built
+            find build/DerivedData/Build/Products -maxdepth 2
             exit 1
           fi
           
           echo "Found App at: $APP_PATH"
           cp -r "$APP_PATH" Payload/
           
-          # Apply ldid signature to the main binary and any extensions
-          # find Payload/LocalDevVPN.app -name "TunnelProv" -exec ldid -S {} +
-          ldid -S Payload/LocalDevVPN.app/LocalDevVPN
+          # Sign main binary and the Network Extension
+          # We use a wildcard to ensure both the app and any included appex are covered
+          find Payload/LocalDevVPN.app -type f -perm +111 -exec ldid -S {} +
           
           zip -r LocalDevVPN.ipa Payload
 
